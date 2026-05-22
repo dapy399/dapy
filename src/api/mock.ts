@@ -1,5 +1,6 @@
 import type { User, MenuItem, Role, Department, Order, Driver } from '@/types/index';
-import { generateId, formatDate } from '@/utils/index';
+import { generateId } from '@/utils/index';
+// formatDate 保留以备后续使用
 
 // Mock 用户数据
 export const mockUsers: User[] = [

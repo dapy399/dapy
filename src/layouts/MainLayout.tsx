@@ -31,11 +31,11 @@ const MainLayout: React.FC = () => {
   const { state, dispatch } = useAppStore();
   const { theme } = useTheme();
   const location = useLocation();
-  const navigate = useNavigate();
+  useNavigate(); // 保留导入以兼容路由守卫
   const [collapsed, setCollapsed] = useState(false);
 
   const {
-    token: { colorBgContainer, borderRadiusLG },
+    token: { colorBgContainer },
   } = antTheme.useToken();
 
   // 【功能】监听路由变化，自动添加标签页
