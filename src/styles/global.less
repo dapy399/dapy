@@ -1,0 +1,102 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+// 滚动条样式
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+// 标签页样式
+.ant-tabs {
+  .ant-tabs-nav {
+    margin-bottom: 0 !important;
+    background: var(--ant-color-bg-container);
+    padding: 0 16px;
+    border-bottom: 1px solid var(--ant-color-border);
+  }
+}
+
+// 全屏样式
+.fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 9999;
+}
+
+// 表格斑马纹
+.table-row-striped {
+  background-color: #fafbfc !important;
+}
+
+// 表格行悬浮效果
+.ant-table-tbody {
+  > tr {
+    transition: background 0.2s ease;
+
+    &:hover {
+      background-color: #f0f5ff !important;
+    }
+  }
+}
+
+// 表格头部样式优化
+.ant-table-thead {
+  > tr {
+    > th {
+      font-weight: 600 !important;
+      color: #262626 !important;
+      background: #f7f8fa !important;
+      border-bottom: 1px solid #e8e8e8 !important;
+    }
+  }
+}
+
+// 卡片标题样式优化
+.ant-card-head {
+  border-bottom: 1px solid #f0f0f0;
+
+  .ant-card-head-title {
+    font-weight: 600;
+  }
+}
+
+// 弹窗标题加粗
+.ant-modal-title {
+  font-weight: 600 !important;
+}
+
+// 描述列表标签加粗
+.ant-descriptions-item-label {
+  font-weight: 500 !important;
+}
+
+// 按钮圆角统一
+.ant-btn {
+  border-radius: 6px;
+}

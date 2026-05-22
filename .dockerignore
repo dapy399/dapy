@@ -1,0 +1,16 @@
+# ============================================================
+# Docker 构建忽略文件
+# ============================================================
+node_modules
+dist
+.git
+.github
+.env*
+*.md
+eslint.config.js
+tsconfig*.json
+vite.config.ts
+.dockerignore
+Dockerfile
+docker-compose.yml
+nginx.conf
