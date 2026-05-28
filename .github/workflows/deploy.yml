@@ -36,7 +36,9 @@ jobs:
       - name: Setup SSH key
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.ECS_KEY }}" | base64 -d > ~/.ssh/id_ecs
+          cat << 'KEYEOF' > ~/.ssh/id_ecs
+          ${{ secrets.ECS_KEY }}
+          KEYEOF
           chmod 600 ~/.ssh/id_ecs
           ssh-keyscan -H ${{ secrets.ECS_HOST }} >> ~/.ssh/known_hosts
 
