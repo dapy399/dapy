@@ -36,11 +36,10 @@ jobs:
       - name: Setup SSH key
         run: |
           mkdir -p ~/.ssh
-          cat << 'KEYEOF' > ~/.ssh/id_ecs
-          ${{ secrets.ECS_KEY }}
-          KEYEOF
+          echo "${{ secrets.ECS_KEY }}" > ~/.ssh/id_ecs
           chmod 600 ~/.ssh/id_ecs
           ssh-keyscan -H ${{ secrets.ECS_HOST }} >> ~/.ssh/known_hosts
+
 
       - name: Upload image to ECS
         run: |
