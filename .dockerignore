@@ -8,9 +8,6 @@ dist
 .env*
 *.md
 eslint.config.js
-tsconfig*.json
-vite.config.ts
 .dockerignore
 Dockerfile
 docker-compose.yml
-nginx.conf

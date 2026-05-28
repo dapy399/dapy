@@ -1,76 +1,113 @@
-name: Build and Deploy
+# ============================================================
+# React Admin — GitHub Actions 部署到阿里云 ECS
+# 更新日期：2026-05-27
+# 流程：构建镜像 → 导出 tar.gz → SCP 上传 → SSH 远程部署
+# ============================================================
+
+name: Deploy to ECS
 
 on:
-  # 当 push 到 main 分支时触发
   push:
     branches: [main]
-  # 也支持手动触发
-  workflow_dispatch:
+  workflow_dispatch: # 支持手动触发
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-# 只允许部署并发，防止重复部署
-concurrency:
-  group: pages
-  cancel-in-progress: false
+env:
+  IMAGE_NAME: react-admin
+  CONTAINER_NAME: react-admin
+  REMOTE_DIR: /opt/react-admin
+  PORT: 80
 
 jobs:
-  # =============================================
-  # 任务 1：构建（Build）
-  # =============================================
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
+
     steps:
-      # 步骤 1：拉取代码
-      - name: Checkout repository
+      # ==================== 1. 检出代码 ====================
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      # 步骤 2：设置 Node.js 环境
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      # ==================== 2. 构建 Docker 镜像 ====================
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t ${{ env.IMAGE_NAME }}:latest \
+            -t ${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --build-arg VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }} \
+            .
+
+      # ==================== 3. 导出镜像为 tar.gz ====================
+      - name: Export and compress image
+        run: |
+          docker save -o ${{ env.IMAGE_NAME }}.tar ${{ env.IMAGE_NAME }}:latest
+          gzip -f ${{ env.IMAGE_NAME }}.tar
+          ls -lh ${{ env.IMAGE_NAME }}.tar.gz
+
+      # ==================== 4. SCP 上传到 ECS（密钥登录） ====================
+      - name: Upload image to ECS
+        uses: appleboy/scp-action@v0.1.7
         with:
-          node-version: '20'
-          cache: 'npm'
+          host: ${{ secrets.ECS_HOST }}
+          port: ${{ secrets.ECS_PORT }}
+          username: ${{ secrets.ECS_USER }}
+          key: ${{ secrets.ECS_KEY }}
+          source: ${{ env.IMAGE_NAME }}.tar.gz
+          target: ${{ env.REMOTE_DIR }}/
 
-      # 步骤 3：安装依赖
-      - name: Install dependencies
-        run: npm ci
-
-      # 步骤 4：TypeScript 类型检查
-      - name: Type check
-        run: npm run type-check
-
-      # 步骤 5：ESLint 代码检查
-      - name: Lint
-        run: npm run lint || true
-
-      # 步骤 6：构建生产包
-      - name: Build
-        run: npm run build
-        env:
-          # 如果有环境变量，在这里注入
-          VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
-
-      # 步骤 7：上传构建产物（供部署任务使用）
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+      # ==================== 5. SSH 远程部署（密钥登录） ====================
+      - name: Deploy on ECS
+        uses: appleboy/ssh-action@v1.2.2
         with:
-          path: dist
+          host: ${{ secrets.ECS_HOST }}
+          port: ${{ secrets.ECS_PORT }}
+          username: ${{ secrets.ECS_USER }}
+          key: ${{ secrets.ECS_KEY }}
+          script: |
+            set -e
 
-  # =============================================
-  # 任务 2：部署（Deploy）
-  # =============================================
-  deploy:
-    # 必须等待 build 任务完成
-    needs: build
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+            cd ${{ env.REMOTE_DIR }}
+
+            # 加载新镜像
+            echo ">>> 加载新镜像..."
+            docker load -i ${{ env.IMAGE_NAME }}.tar.gz
+            rm -f ${{ env.IMAGE_NAME }}.tar.gz
+
+            # 停止旧容器
+            echo ">>> 停止旧容器..."
+            docker stop ${{ env.CONTAINER_NAME }} 2>/dev/null || true
+            docker rm ${{ env.CONTAINER_NAME }} 2>/dev/null || true
+
+            # 启动新容器（端口映射与 docker-compose.yml 保持一致）
+            echo ">>> 启动新容器..."
+            docker run -d \
+              --name ${{ env.CONTAINER_NAME }} \
+              --restart=always \
+              -p ${{ env.PORT }}:80 \
+              ${{ env.IMAGE_NAME }}:latest
+
+            # 显示容器状态
+            echo ">>> 容器状态："
+            docker ps --filter name=${{ env.CONTAINER_NAME }} \
+              --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+            # 等待健康检查通过（最多 60s）
+            echo ">>> 等待健康检查..."
+            for i in $(seq 1 12); do
+              HEALTH=$(docker inspect --format='{{.State.Health.Status}}' ${{ env.CONTAINER_NAME }} 2>/dev/null || echo "starting")
+              if [ "$HEALTH" = "healthy" ]; then
+                echo ">>> 部署成功！容器状态：healthy"
+                exit 0
+              fi
+              echo "  检查中 ($i/12)：$HEALTH"
+              sleep 5
+            done
+
+            echo ">>> 警告：健康检查超时，查看日志："
+            docker logs --tail 30 ${{ env.CONTAINER_NAME }}
+
+      # ==================== 6. 清理本地文件 ====================
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -f ${{ env.IMAGE_NAME }}.tar.gz
+          docker rmi ${{ env.IMAGE_NAME }}:latest 2>/dev/null || true
+          docker rmi ${{ env.IMAGE_NAME }}:${{ github.sha }} 2>/dev/null || true
