@@ -1,8 +1,3 @@
-# ============================================================
-# React Admin — GitHub Actions 部署到阿里云 ECS
-# 免 ACR，免第三方 action，纯 scp + ssh
-# ============================================================
-
 name: Deploy to ECS
 
 on:
@@ -10,89 +5,73 @@ on:
     branches: [main]
   workflow_dispatch:
 
+env:
+  IMAGE_NAME: react-admin
+  CONTAINER_NAME: react-admin
+  REMOTE_DIR: /opt/react-admin
+  PORT: 80
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      # ==================== 1. 检出代码 ====================
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ==================== 2. 构建 Docker 镜像 ====================
       - name: Build Docker image
         run: |
           docker build \
-            -t react-admin:latest \
-            -t react-admin:${{ github.sha }} \
+            -t $IMAGE_NAME:latest \
+            -t $IMAGE_NAME:${{ github.sha }} \
             --build-arg VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }} \
             .
 
-      # ==================== 3. 导出镜像并压缩 ====================
       - name: Export and compress image
         run: |
-          docker save react-admin:latest -o react-admin.tar
-          gzip -f react-admin.tar
-          ls -lh react-admin.tar.gz
+          docker save $IMAGE_NAME:latest -o $IMAGE_NAME.tar
+          gzip -f $IMAGE_NAME.tar
+          ls -lh $IMAGE_NAME.tar.gz
 
-      # ==================== 4. 配置 SSH 密钥 ====================
       - name: Setup SSH key
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.ECS_KEY }}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
+          echo "${{ secrets.ECS_KEY }}" | base64 -d > ~/.ssh/id_ecs
+          chmod 600 ~/.ssh/id_ecs
           ssh-keyscan -H ${{ secrets.ECS_HOST }} >> ~/.ssh/known_hosts
 
-      # ==================== 5. SCP 上传镜像到 ECS ====================
       - name: Upload image to ECS
         run: |
-          scp -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no \
-            react-admin.tar.gz \
-            ${{ secrets.ECS_USER }}@${{ secrets.ECS_HOST }}:/opt/react-admin/
+          scp -i ~/.ssh/id_ecs -o StrictHostKeyChecking=no \
+            $IMAGE_NAME.tar.gz \
+            ${{ secrets.ECS_USER }}@${{ secrets.ECS_HOST }}:$REMOTE_DIR/
 
-      # ==================== 6. SSH 远程部署 ====================
       - name: Deploy on ECS
         run: |
-          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no \
+          ssh -i ~/.ssh/id_ecs -o StrictHostKeyChecking=no \
             ${{ secrets.ECS_USER }}@${{ secrets.ECS_HOST }} << 'EOF'
             set -e
-            cd /opt/react-admin
-
-            echo ">>> 加载新镜像..."
-            docker load -i react-admin.tar.gz
-            rm -f react-admin.tar.gz
-
-            echo ">>> 停止旧容器..."
-            docker stop react-admin 2>/dev/null || true
-            docker rm react-admin 2>/dev/null || true
-
-            echo ">>> 启动新容器..."
+            cd $REMOTE_DIR
+            docker load -i $IMAGE_NAME.tar.gz
+            rm -f $IMAGE_NAME.tar.gz
+            docker stop $CONTAINER_NAME 2>/dev/null || true
+            docker rm $CONTAINER_NAME 2>/dev/null || true
             docker run -d \
-              --name react-admin \
+              --name $CONTAINER_NAME \
               --restart=always \
-              -p 80:80 \
-              react-admin:latest
-
-            echo ">>> 容器状态："
-            docker ps --filter name=react-admin \
-              --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-
-            echo ">>> 等待健康检查..."
+              -p $PORT:80 \
+              $IMAGE_NAME:latest
+            echo "等待健康检查..."
             for i in $(seq 1 12); do
-              HEALTH=$(docker inspect --format='{{.State.Health.Status}}' react-admin 2>/dev/null || echo starting)
-              if [ "$HEALTH" = "healthy" ]; then
-                echo ">>> 部署成功！healthy"
-                exit 0
-              fi
+              HEALTH=$(docker inspect --format='{{.State.Health.Status}}' $CONTAINER_NAME 2>/dev/null || echo starting)
+              [ "$HEALTH" = "healthy" ] && echo "部署成功！" && exit 0
               echo "  $i/12: $HEALTH"
               sleep 5
             done
-            echo ">>> 警告：健康检查超时"
-            docker logs --tail 20 react-admin
+            echo "健康检查超时，查看日志："
+            docker logs --tail 20 $CONTAINER_NAME
           EOF
 
-      # ==================== 7. 清理 ====================
       - name: Cleanup
         if: always()
-        run: |
-          rm -f react-admin.tar.gz ~/.ssh/id_ed25519
+        run: rm -f $IMAGE_NAME.tar.gz ~/.ssh/id_ecs
