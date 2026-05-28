@@ -34,12 +34,14 @@ jobs:
           ls -lh $IMAGE_NAME.tar.gz
 
       - name: Setup SSH key
+        env:
+          SSH_KEY: ${{ secrets.ECS_KEY }}
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.ECS_KEY }}" > ~/.ssh/id_ecs
+          echo "$SSH_KEY" > ~/.ssh/id_ecs
           chmod 600 ~/.ssh/id_ecs
+          ssh-keygen -y -f ~/.ssh/id_ecs > /dev/null && echo "✅ SSH 密钥格式正确"
           ssh-keyscan -H ${{ secrets.ECS_HOST }} >> ~/.ssh/known_hosts
-
 
       - name: Upload image to ECS
         run: |
